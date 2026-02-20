@@ -7,7 +7,7 @@ Tool CLI untuk scrape Shodan dengan rotasi multi API key, mode interaktif, dan d
 - Rotasi multi-key + cooldown exponential backoff saat error/rate-limit.
 - Bisa proses banyak dork dari file (`--dork-file`) dengan **2 worker paralel**.
 - Jika ada halaman error saat scrape, halaman tersebut di-skip dulu dan di-**retry di akhir**.
-- Interaktif: bisa tanya langsung berapa page per dork dan berapa ribu hasil target.
+- Interaktif: bisa input list API key langsung dari tools, pilih page per dork, dan target hasil (ribuan).
 - Output per dork:
   - raw `.jsonl`
   - `_ip.txt`
@@ -30,12 +30,10 @@ nginx port:443 country:SG
 ### 1) Mode interaktif (disarankan)
 
 ```bash
-python3 shodan_grabber.py --interactive \
-  --key "$SHODAN_KEY_1" \
-  --key "$SHODAN_KEY_2"
+python3 shodan_grabber.py --interactive
 ```
 
-### 2) Langsung pakai file dork
+### 2) Langsung pakai file dork (non-interaktif, key via flag)
 
 ```bash
 python3 shodan_grabber.py \

@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shodan_grabber import dedupe_rows, load_dorks_from_file, slugify
+from argparse import Namespace
+
+from shodan_grabber import dedupe_rows, load_dorks_from_file, resolve_keys, slugify
 
 
 class DorkFlowTests(unittest.TestCase):
@@ -24,6 +26,14 @@ class DorkFlowTests(unittest.TestCase):
     def test_slugify(self):
         self.assertEqual(slugify("nginx port:443 country:SG"), "nginx_port_443_country_sg")
 
+    def test_resolve_keys_deduplicate(self):
+        args = Namespace(key=["k1", "k1", "k2"], interactive=False)
+        self.assertEqual(resolve_keys(args), ["k1", "k2"])
+
+    def test_resolve_keys_error_when_empty_noninteractive(self):
+        args = Namespace(key=None, interactive=False)
+        with self.assertRaises(RuntimeError):
+            resolve_keys(args)
 
 if __name__ == "__main__":
     unittest.main()

@@ -255,7 +255,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("query", nargs="?", help="Shodan query tunggal")
     parser.add_argument("--dork-file", type=Path, help="File berisi list dork (1 baris = 1 dork)")
     parser.add_argument("--interactive", action="store_true", help="Mode interaktif")
-    parser.add_argument("--key", action="append", required=True, help="API key Shodan (disarankan 2 key)")
+    parser.add_argument("--key", action="append", help="API key Shodan (disarankan 2 key, bisa diulang)")
     parser.add_argument("--pages", type=int, help="Jumlah page per dork")
     parser.add_argument("--per-page", type=int, default=100, help="Maksimum item per page")
     parser.add_argument("--target-thousands", type=int, help="Target hasil per dork dalam ribuan")
@@ -264,6 +264,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout per request")
     parser.add_argument("--output-dir", type=Path, default=Path("output"), help="Folder output")
     return parser.parse_args()
+
+
+def resolve_keys(args: argparse.Namespace) -> list[str]:
+    keys = [k.strip() for k in (args.key or []) if k and k.strip()]
+
+    if args.interactive and not keys:
+        print("Masukan API key Shodan (kosongkan untuk selesai):")
+        while True:
+            value = input("- key: ").strip()
+            if not value:
+                break
+            keys.append(value)
+
+    unique_keys: list[str] = []
+    seen = set()
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_keys.append(key)
+
+    if not unique_keys:
+        raise RuntimeError("Tidak ada API key. Pakai --key atau mode --interactive untuk input key.")
+
+    return unique_keys
 
 
 def prompt_if_needed(args: argparse.Namespace) -> tuple[list[str], int, int | None]:
@@ -326,8 +351,14 @@ def process_one_dork(
 def main() -> int:
     args = parse_args()
 
+    try:
+        resolved_keys = resolve_keys(args)
+    except RuntimeError as exc:
+        print(f"[x] {exc}", file=sys.stderr)
+        return 2
+
     pool = ApiKeyPool(
-        keys=[KeyState(k.strip()) for k in args.key if k.strip()],
+        keys=[KeyState(k) for k in resolved_keys],
         min_interval=max(args.min_interval, 0.1),
         cooldown_seconds=max(args.cooldown, 1.0),
     )
