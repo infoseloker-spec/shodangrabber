@@ -191,6 +191,32 @@ def write_output(path: Path, rows: list[dict[str, Any]]) -> None:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def write_separated_outputs(base_output: Path, rows: list[dict[str, Any]]) -> dict[str, Path]:
+    base_output.parent.mkdir(parents=True, exist_ok=True)
+
+    ips = sorted({row.get("ip") for row in rows if row.get("ip")})
+    ip_ports = sorted({f"{row.get('ip')}:{row.get('port')}" for row in rows if row.get("ip") and row.get("port")})
+
+    domains_set = set()
+    for row in rows:
+        for host in row.get("hostnames") or []:
+            host = (host or "").strip().lower()
+            if host:
+                domains_set.add(host)
+    domains = sorted(domains_set)
+
+    base_name = base_output.stem if base_output.stem else "results"
+    ip_file = base_output.with_name(f"{base_name}_ip.txt")
+    domain_file = base_output.with_name(f"{base_name}_domain.txt")
+    ip_port_file = base_output.with_name(f"{base_name}_ip_port.txt")
+
+    ip_file.write_text("\n".join(ips) + ("\n" if ips else ""), encoding="utf-8")
+    domain_file.write_text("\n".join(domains) + ("\n" if domains else ""), encoding="utf-8")
+    ip_port_file.write_text("\n".join(ip_ports) + ("\n" if ip_ports else ""), encoding="utf-8")
+
+    return {"ip": ip_file, "domain": domain_file, "ip_port": ip_port_file}
+
+
 def main() -> int:
     args = parse_args()
     if len(args.key) < 2:
@@ -215,8 +241,12 @@ def main() -> int:
         return 1
 
     write_output(args.output, rows)
+    separated_files = write_separated_outputs(args.output, rows)
     print(f"[+] Selesai. Total data unik: {len(rows)}")
     print(f"[+] Output: {args.output}")
+    print(f"[+] IP saja: {separated_files['ip']}")
+    print(f"[+] Domain saja: {separated_files['domain']}")
+    print(f"[+] IP:Port saja: {separated_files['ip_port']}")
     return 0
 
 

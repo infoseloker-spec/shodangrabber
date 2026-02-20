@@ -9,7 +9,7 @@ Tool CLI sederhana untuk ambil data dari Shodan dengan **rotasi 2 API key** supa
 - Auto cooldown + exponential backoff saat 429/5xx/network error.
 - Auto nonaktifkan key saat invalid (`401`) atau credit habis (`402`).
 - Deduplikasi hasil berdasarkan `ip + port`.
-- Output ke `jsonl` atau `csv`.
+- Output utama ke `jsonl` atau `csv` plus output terpisah: `ip`, `domain`, `ip:port`.
 
 ## Install
 
@@ -30,6 +30,11 @@ python shodan_grabber.py "apache country:ID" \
   --min-interval 1.2 \
   --output output/results.jsonl
 ```
+
+Setelah selesai, tool juga otomatis membuat:
+- `output/results_ip.txt`
+- `output/results_domain.txt`
+- `output/results_ip_port.txt`
 
 Contoh output CSV:
 
