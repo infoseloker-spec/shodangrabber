@@ -7,16 +7,14 @@ Tool CLI untuk scrape Shodan dengan rotasi multi API key, mode interaktif, progr
 - Rotasi multi-key + cooldown exponential backoff saat error/rate-limit.
 - Bisa proses banyak dork dari file (`--dork-file`) dengan **2 worker paralel**.
 - Menampilkan progress scraping per dork dan per page (status mulai, sukses, gagal, retry).
-- **Auto-save langsung** setiap ada hasil page (append ke `combined_results.jsonl` saat proses berjalan).
+- **Auto-save langsung** setiap ada hasil page (langsung ke file kategori saat proses berjalan).
 - Jika ada halaman error saat scrape, halaman tersebut di-skip dulu lalu di-**retry di akhir**.
 - Interaktif: bisa input list API key langsung dari tools, pilih page per dork, dan target hasil (ribuan).
-- Output final hanya 1 set gabungan (tidak dipecah per dork):
-  - `IP.txt`
-  - `DOMAIN.txt`
-  - `IP_PORT.txt`
-
-  (kompatibel juga dibuat: `IP SAJA.txt`, `DOMAIN SAJA.txt`, `IP_PORT SAJA.txt`, `IP:PORT.txt`)
-- Di akhir, tool auto dedupe hasil gabungan dan file text output.
+- Output realtime terpisah per kategori (global semua dork):
+  - `ip.txt`
+  - `domain.txt`
+  - `ipport.txt`
+- Di akhir, tool auto finalize dedupe + sort untuk ketiga file tersebut.
 
 ## Menyiapkan file dork
 

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import re
 import sys
@@ -212,59 +211,76 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return out
 
 
-def write_output(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.suffix.lower() == ".csv":
-        with path.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=["ip", "port", "org", "asn", "country", "hostnames", "product", "timestamp", "query", "page"],
-            )
-            writer.writeheader()
-            for row in rows:
-                copy = dict(row)
-                copy["hostnames"] = ";".join(copy.get("hostnames") or [])
-                writer.writerow(copy)
-    else:
-        with path.open("w", encoding="utf-8") as f:
-            for row in rows:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+def build_category_sets(rows: list[dict[str, Any]]) -> tuple[set[str], set[str], set[str]]:
+    ips = {row.get("ip") for row in rows if row.get("ip")}
+    domains = set()
+    ip_ports = set()
 
-
-def write_final_text_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> dict[str, Path]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ips = sorted({row.get("ip") for row in rows if row.get("ip")})
-    ip_ports = sorted({f"{row.get('ip')}:{row.get('port')}" for row in rows if row.get("ip") and row.get("port")})
-
-    domains_set = set()
     for row in rows:
+        ip = row.get("ip")
+        port = row.get("port")
+        if ip and port:
+            ip_ports.add(f"{ip}:{port}")
+
         for host in row.get("hostnames") or []:
             clean = (host or "").strip().lower()
             if clean:
-                domains_set.add(clean)
-    domains = sorted(domains_set)
+                domains.add(clean)
 
-    # Primary output names (simple)
-    ip_file = output_dir / "IP.txt"
-    domain_file = output_dir / "DOMAIN.txt"
-    ip_port_file = output_dir / "IP_PORT.txt"
+    return ips, domains, ip_ports
 
-    ip_content = "\n".join(ips) + ("\n" if ips else "")
-    domain_content = "\n".join(domains) + ("\n" if domains else "")
-    ip_port_content = "\n".join(ip_ports) + ("\n" if ip_ports else "")
 
-    ip_file.write_text(ip_content, encoding="utf-8")
-    domain_file.write_text(domain_content, encoding="utf-8")
-    ip_port_file.write_text(ip_port_content, encoding="utf-8")
+class CategoryAutosaver:
+    def __init__(self, output_dir: Path) -> None:
+        self.output_dir = output_dir
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.ip_file = self.output_dir / "ip.txt"
+        self.domain_file = self.output_dir / "domain.txt"
+        self.ip_port_file = self.output_dir / "ipport.txt"
 
-    # Compatibility aliases so user can find old naming too.
-    (output_dir / "IP SAJA.txt").write_text(ip_content, encoding="utf-8")
-    (output_dir / "DOMAIN SAJA.txt").write_text(domain_content, encoding="utf-8")
-    (output_dir / "IP_PORT SAJA.txt").write_text(ip_port_content, encoding="utf-8")
-    (output_dir / "IP:PORT.txt").write_text(ip_port_content, encoding="utf-8")
+        self._lock = threading.Lock()
+        self._ips_seen: set[str] = set()
+        self._domains_seen: set[str] = set()
+        self._ip_ports_seen: set[str] = set()
 
-    return {"ip": ip_file, "domain": domain_file, "ip_port": ip_port_file}
+        self.ip_file.write_text("", encoding="utf-8")
+        self.domain_file.write_text("", encoding="utf-8")
+        self.ip_port_file.write_text("", encoding="utf-8")
 
+    def append_rows(self, query: str, page: int, rows: list[dict[str, Any]]) -> None:
+        ips, domains, ip_ports = build_category_sets(rows)
+        with self._lock:
+            new_ips = sorted(ips - self._ips_seen)
+            new_domains = sorted(domains - self._domains_seen)
+            new_ip_ports = sorted(ip_ports - self._ip_ports_seen)
+
+            self._ips_seen.update(new_ips)
+            self._domains_seen.update(new_domains)
+            self._ip_ports_seen.update(new_ip_ports)
+
+            if new_ips:
+                with self.ip_file.open("a", encoding="utf-8") as f:
+                    f.write("\n".join(new_ips) + "\n")
+            if new_domains:
+                with self.domain_file.open("a", encoding="utf-8") as f:
+                    f.write("\n".join(new_domains) + "\n")
+            if new_ip_ports:
+                with self.ip_port_file.open("a", encoding="utf-8") as f:
+                    f.write("\n".join(new_ip_ports) + "\n")
+
+            log(
+                f"[💾] {query} | page {page} autosave ip+{len(new_ips)} domain+{len(new_domains)} ipport+{len(new_ip_ports)}"
+            )
+
+    def finalize_sorted_unique(self) -> None:
+        with self._lock:
+            self.ip_file.write_text("\n".join(sorted(self._ips_seen)) + ("\n" if self._ips_seen else ""), encoding="utf-8")
+            self.domain_file.write_text(
+                "\n".join(sorted(self._domains_seen)) + ("\n" if self._domains_seen else ""), encoding="utf-8"
+            )
+            self.ip_port_file.write_text(
+                "\n".join(sorted(self._ip_ports_seen)) + ("\n" if self._ip_ports_seen else ""), encoding="utf-8"
+            )
 
 def dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen = set()
@@ -276,36 +292,6 @@ def dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(sig)
         deduped.append(row)
     return deduped
-
-
-def dedupe_jsonl_file(path: Path) -> list[dict[str, Any]]:
-    rows = dedupe_rows(load_jsonl(path))
-    write_output(path, rows)
-    return rows
-
-
-class AutosaveAggregator:
-    def __init__(self, raw_file: Path) -> None:
-        self.raw_file = raw_file
-        self._lock = threading.Lock()
-        self._seen: set[tuple[Any, Any]] = set()
-        self.total_saved = 0
-        self.raw_file.parent.mkdir(parents=True, exist_ok=True)
-        self.raw_file.write_text("", encoding="utf-8")
-
-    def append_page(self, query: str, page: int, page_rows: list[dict[str, Any]]) -> int:
-        with self._lock:
-            fresh = []
-            for row in page_rows:
-                sig = (row.get("ip"), row.get("port"))
-                if sig in self._seen:
-                    continue
-                self._seen.add(sig)
-                fresh.append(row)
-            append_rows_jsonl(self.raw_file, fresh)
-            self.total_saved += len(fresh)
-            log(f"[💾] {query} | page {page} autosave +{len(fresh)} (total tersimpan global: {self.total_saved})")
-            return len(fresh)
 
 
 def load_dorks_from_file(path: Path) -> list[str]:
@@ -397,10 +383,10 @@ def process_one_dork(
     pages: int,
     per_page: int,
     target_results: int | None,
-    autosaver: AutosaveAggregator,
+    autosaver: CategoryAutosaver,
 ) -> tuple[str, int, list[int]]:
     def on_page(page: int, page_rows: list[dict[str, Any]]) -> None:
-        autosaver.append_page(query, page, page_rows)
+        autosaver.append_rows(query, page, page_rows)
 
     first_rows, failed_pages = grabber.search_pages(query, list(range(1, pages + 1)), per_page, target_results, on_page=on_page)
     retry_rows: list[dict[str, Any]] = []
@@ -432,8 +418,7 @@ def main() -> int:
 
     log(f"[+] Mulai scraping | total dork: {len(dorks)} | worker paralel: 2")
     grabber = ShodanGrabber(pool=pool, timeout=max(args.timeout, 3.0))
-    combined_file = args.output_dir / "combined_results.jsonl"
-    autosaver = AutosaveAggregator(combined_file)
+    autosaver = CategoryAutosaver(args.output_dir)
 
     failed_by_dork: dict[str, list[int]] = {}
 
@@ -447,14 +432,12 @@ def main() -> int:
                 failed_by_dork[query] = failed_pages
                 log(f"    - halaman gagal setelah retry akhir: {failed_pages}")
 
-    combined_rows = dedupe_jsonl_file(combined_file)
-    text_outputs = write_final_text_outputs(args.output_dir, combined_rows)
+    autosaver.finalize_sorted_unique()
 
-    log(f"[+] Semua dork selesai. Total gabungan unik: {len(combined_rows)}")
-    log(f"[+] Raw gabungan: {combined_file}")
-    log(f"[+] IP saja: {text_outputs['ip']}")
-    log(f"[+] DOMAIN saja: {text_outputs['domain']}")
-    log(f"[+] IP:PORT saja: {text_outputs['ip_port']}")
+    log("[+] Semua dork selesai.")
+    log(f"[+] IP: {autosaver.ip_file}")
+    log(f"[+] DOMAIN: {autosaver.domain_file}")
+    log(f"[+] IPPORT: {autosaver.ip_port_file}")
 
     if failed_by_dork:
         log("[!] Ada halaman yang tetap gagal setelah retry:")
