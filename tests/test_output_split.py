@@ -2,11 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shodan_grabber import append_rows_jsonl, dedupe_jsonl_file, write_separated_outputs
+from shodan_grabber import append_rows_jsonl, dedupe_jsonl_file, write_final_text_outputs
 
 
 class OutputSplitTests(unittest.TestCase):
-    def test_write_separated_outputs(self):
+    def test_write_final_text_outputs(self):
         rows = [
             {"ip": "1.1.1.1", "port": 80, "hostnames": ["a.example.com", "A.example.com"]},
             {"ip": "2.2.2.2", "port": 443, "hostnames": ["b.example.com", ""]},
@@ -14,16 +14,16 @@ class OutputSplitTests(unittest.TestCase):
         ]
 
         with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp) / "results.jsonl"
-            paths = write_separated_outputs(base, rows)
+            out = write_final_text_outputs(Path(tmp), rows)
 
-            ip_lines = paths["ip"].read_text(encoding="utf-8").strip().splitlines()
-            domain_lines = paths["domain"].read_text(encoding="utf-8").strip().splitlines()
-            ip_port_lines = paths["ip_port"].read_text(encoding="utf-8").strip().splitlines()
+            ip_lines = out["ip"].read_text(encoding="utf-8").strip().splitlines()
+            domain_lines = out["domain"].read_text(encoding="utf-8").strip().splitlines()
+            ip_port_lines = out["ip_port"].read_text(encoding="utf-8").strip().splitlines()
 
             self.assertEqual(ip_lines, ["1.1.1.1", "2.2.2.2"])
             self.assertEqual(domain_lines, ["a.example.com", "b.example.com"])
             self.assertEqual(ip_port_lines, ["1.1.1.1:80", "2.2.2.2:443"])
+            self.assertTrue(out["ip"].name.endswith("IP SAJA.txt"))
 
     def test_dedupe_jsonl_file(self):
         rows = [
@@ -35,8 +35,8 @@ class OutputSplitTests(unittest.TestCase):
             p = Path(tmp) / "raw.jsonl"
             append_rows_jsonl(p, rows)
             out = dedupe_jsonl_file(p)
-            self.assertEqual(len(out), 2)
-            self.assertEqual(len(p.read_text(encoding="utf-8").strip().splitlines()), 2)
+            self.assertEqual(len(out), 1)
+            self.assertEqual(len(p.read_text(encoding="utf-8").strip().splitlines()), 1)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ class DorkFlowTests(unittest.TestCase):
             {"query": "b", "ip": "1.1.1.1", "port": 80},
         ]
         out = dedupe_rows(rows)
-        self.assertEqual(len(out), 2)
+        self.assertEqual(len(out), 1)
 
     def test_slugify(self):
         self.assertEqual(slugify("nginx port:443 country:SG"), "nginx_port_443_country_sg")

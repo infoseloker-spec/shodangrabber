@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive Shodan grabber with key rotation, progress logs, and autosave."""
+"""Interactive Shodan grabber with key rotation, realtime progress, and autosave."""
 
 from __future__ import annotations
 
@@ -231,8 +231,8 @@ def write_output(path: Path, rows: list[dict[str, Any]]) -> None:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def write_separated_outputs(base_output: Path, rows: list[dict[str, Any]]) -> dict[str, Path]:
-    base_output.parent.mkdir(parents=True, exist_ok=True)
+def write_final_text_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
     ips = sorted({row.get("ip") for row in rows if row.get("ip")})
     ip_ports = sorted({f"{row.get('ip')}:{row.get('port')}" for row in rows if row.get("ip") and row.get("port")})
 
@@ -244,14 +244,14 @@ def write_separated_outputs(base_output: Path, rows: list[dict[str, Any]]) -> di
                 domains_set.add(clean)
     domains = sorted(domains_set)
 
-    base_name = base_output.stem if base_output.stem else "results"
-    ip_file = base_output.with_name(f"{base_name}_ip.txt")
-    domain_file = base_output.with_name(f"{base_name}_domain.txt")
-    ip_port_file = base_output.with_name(f"{base_name}_ip_port.txt")
+    ip_file = output_dir / "IP SAJA.txt"
+    domain_file = output_dir / "DOMAIN SAJA.txt"
+    ip_port_file = output_dir / "IP_PORT SAJA.txt"
 
     ip_file.write_text("\n".join(ips) + ("\n" if ips else ""), encoding="utf-8")
     domain_file.write_text("\n".join(domains) + ("\n" if domains else ""), encoding="utf-8")
     ip_port_file.write_text("\n".join(ip_ports) + ("\n" if ip_ports else ""), encoding="utf-8")
+
     return {"ip": ip_file, "domain": domain_file, "ip_port": ip_port_file}
 
 
@@ -259,7 +259,7 @@ def dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen = set()
     deduped = []
     for row in rows:
-        sig = (row.get("query"), row.get("ip"), row.get("port"))
+        sig = (row.get("ip"), row.get("port"))
         if sig in seen:
             continue
         seen.add(sig)
@@ -271,6 +271,30 @@ def dedupe_jsonl_file(path: Path) -> list[dict[str, Any]]:
     rows = dedupe_rows(load_jsonl(path))
     write_output(path, rows)
     return rows
+
+
+class AutosaveAggregator:
+    def __init__(self, raw_file: Path) -> None:
+        self.raw_file = raw_file
+        self._lock = threading.Lock()
+        self._seen: set[tuple[Any, Any]] = set()
+        self.total_saved = 0
+        self.raw_file.parent.mkdir(parents=True, exist_ok=True)
+        self.raw_file.write_text("", encoding="utf-8")
+
+    def append_page(self, query: str, page: int, page_rows: list[dict[str, Any]]) -> int:
+        with self._lock:
+            fresh = []
+            for row in page_rows:
+                sig = (row.get("ip"), row.get("port"))
+                if sig in self._seen:
+                    continue
+                self._seen.add(sig)
+                fresh.append(row)
+            append_rows_jsonl(self.raw_file, fresh)
+            self.total_saved += len(fresh)
+            log(f"[💾] {query} | page {page} autosave +{len(fresh)} (total tersimpan global: {self.total_saved})")
+            return len(fresh)
 
 
 def load_dorks_from_file(path: Path) -> list[str]:
@@ -362,39 +386,19 @@ def process_one_dork(
     pages: int,
     per_page: int,
     target_results: int | None,
-    raw_file: Path,
-) -> tuple[str, list[dict[str, Any]], list[int]]:
-    raw_file.parent.mkdir(parents=True, exist_ok=True)
-    raw_file.write_text("", encoding="utf-8")
-
-    seen: set[tuple[Any, Any]] = set()
-    saved_count = 0
-
+    autosaver: AutosaveAggregator,
+) -> tuple[str, int, list[int]]:
     def on_page(page: int, page_rows: list[dict[str, Any]]) -> None:
-        nonlocal saved_count
-        fresh = []
-        for row in page_rows:
-            sig = (row.get("ip"), row.get("port"))
-            if sig in seen:
-                continue
-            seen.add(sig)
-            fresh.append(row)
-
-        append_rows_jsonl(raw_file, fresh)
-        saved_count += len(fresh)
-        log(f"[💾] {query} | page {page} autosave +{len(fresh)} (total tersimpan: {saved_count})")
+        autosaver.append_page(query, page, page_rows)
 
     first_rows, failed_pages = grabber.search_pages(query, list(range(1, pages + 1)), per_page, target_results, on_page=on_page)
-
     retry_rows: list[dict[str, Any]] = []
     if failed_pages:
         log(f"[~] {query} | retry halaman error di akhir: {failed_pages}")
         retry_rows, failed_pages = grabber.search_pages(query, failed_pages, per_page, target_results, on_page=on_page)
 
-    rows = dedupe_rows(first_rows + retry_rows)
-    if target_results and len(rows) > target_results:
-        rows = rows[:target_results]
-    return query, rows, failed_pages
+    total_rows = len(dedupe_rows(first_rows + retry_rows))
+    return query, total_rows, failed_pages
 
 
 def main() -> int:
@@ -417,51 +421,30 @@ def main() -> int:
 
     log(f"[+] Mulai scraping | total dork: {len(dorks)} | worker paralel: 2")
     grabber = ShodanGrabber(pool=pool, timeout=max(args.timeout, 3.0))
+    combined_file = args.output_dir / "combined_results.jsonl"
+    autosaver = AutosaveAggregator(combined_file)
 
-    dork_files: dict[str, Path] = {}
     failed_by_dork: dict[str, list[int]] = {}
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = []
-        for dork in dorks:
-            safe = slugify(dork)
-            raw_file = args.output_dir / f"{safe}.jsonl"
-            dork_files[dork] = raw_file
-            futures.append(executor.submit(process_one_dork, grabber, dork, pages, max(args.per_page, 1), target_results, raw_file))
+        futures = [executor.submit(process_one_dork, grabber, dork, pages, max(args.per_page, 1), target_results, autosaver) for dork in dorks]
 
         for future in as_completed(futures):
-            query, rows, failed_pages = future.result()
-            raw_file = dork_files[query]
-
-            final_rows = dedupe_jsonl_file(raw_file)
-            separated = write_separated_outputs(raw_file, final_rows)
-
-            log(f"[✓] Dork selesai: {query}")
-            log(f"    - total unik final: {len(final_rows)}")
-            log(f"    - raw: {raw_file}")
-            log(f"    - ip: {separated['ip']}")
-            log(f"    - domain: {separated['domain']}")
-            log(f"    - ip:port: {separated['ip_port']}")
-
+            query, total_rows, failed_pages = future.result()
+            log(f"[✓] Dork selesai: {query} | total unik dork (estimasi): {total_rows}")
             if failed_pages:
                 failed_by_dork[query] = failed_pages
                 log(f"    - halaman gagal setelah retry akhir: {failed_pages}")
 
-    # Final dedupe global setelah semua dork selesai.
-    all_rows: list[dict[str, Any]] = []
-    for raw_file in dork_files.values():
-        all_rows.extend(load_jsonl(raw_file))
+    combined_rows = dedupe_jsonl_file(combined_file)
+    text_outputs = write_final_text_outputs(args.output_dir, combined_rows)
 
-    combined = dedupe_rows(all_rows)
-    combined_file = args.output_dir / "combined_results.jsonl"
-    write_output(combined_file, combined)
-    write_separated_outputs(combined_file, combined)
+    log(f"[+] Semua dork selesai. Total gabungan unik: {len(combined_rows)}")
+    log(f"[+] Raw gabungan: {combined_file}")
+    log(f"[+] IP saja: {text_outputs['ip']}")
+    log(f"[+] DOMAIN saja: {text_outputs['domain']}")
+    log(f"[+] IP:PORT saja: {text_outputs['ip_port']}")
 
-    # Safety pass: pastikan file combined juga bebas duplikat.
-    combined = dedupe_jsonl_file(combined_file)
-
-    log(f"[+] Semua dork selesai. Total gabungan unik: {len(combined)}")
-    log(f"[+] Combined output: {combined_file}")
     if failed_by_dork:
         log("[!] Ada halaman yang tetap gagal setelah retry:")
         for dork, failed_pages in failed_by_dork.items():
