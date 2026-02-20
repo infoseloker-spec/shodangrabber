@@ -244,13 +244,24 @@ def write_final_text_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> di
                 domains_set.add(clean)
     domains = sorted(domains_set)
 
-    ip_file = output_dir / "IP SAJA.txt"
-    domain_file = output_dir / "DOMAIN SAJA.txt"
-    ip_port_file = output_dir / "IP_PORT SAJA.txt"
+    # Primary output names (simple)
+    ip_file = output_dir / "IP.txt"
+    domain_file = output_dir / "DOMAIN.txt"
+    ip_port_file = output_dir / "IP_PORT.txt"
 
-    ip_file.write_text("\n".join(ips) + ("\n" if ips else ""), encoding="utf-8")
-    domain_file.write_text("\n".join(domains) + ("\n" if domains else ""), encoding="utf-8")
-    ip_port_file.write_text("\n".join(ip_ports) + ("\n" if ip_ports else ""), encoding="utf-8")
+    ip_content = "\n".join(ips) + ("\n" if ips else "")
+    domain_content = "\n".join(domains) + ("\n" if domains else "")
+    ip_port_content = "\n".join(ip_ports) + ("\n" if ip_ports else "")
+
+    ip_file.write_text(ip_content, encoding="utf-8")
+    domain_file.write_text(domain_content, encoding="utf-8")
+    ip_port_file.write_text(ip_port_content, encoding="utf-8")
+
+    # Compatibility aliases so user can find old naming too.
+    (output_dir / "IP SAJA.txt").write_text(ip_content, encoding="utf-8")
+    (output_dir / "DOMAIN SAJA.txt").write_text(domain_content, encoding="utf-8")
+    (output_dir / "IP_PORT SAJA.txt").write_text(ip_port_content, encoding="utf-8")
+    (output_dir / "IP:PORT.txt").write_text(ip_port_content, encoding="utf-8")
 
     return {"ip": ip_file, "domain": domain_file, "ip_port": ip_port_file}
 

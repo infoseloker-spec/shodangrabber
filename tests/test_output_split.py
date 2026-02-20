@@ -23,7 +23,13 @@ class OutputSplitTests(unittest.TestCase):
             self.assertEqual(ip_lines, ["1.1.1.1", "2.2.2.2"])
             self.assertEqual(domain_lines, ["a.example.com", "b.example.com"])
             self.assertEqual(ip_port_lines, ["1.1.1.1:80", "2.2.2.2:443"])
-            self.assertTrue(out["ip"].name.endswith("IP SAJA.txt"))
+            self.assertTrue(out["ip"].name.endswith("IP.txt"))
+            self.assertTrue((Path(tmp) / "DOMAIN.txt").exists())
+            self.assertTrue((Path(tmp) / "IP_PORT.txt").exists())
+            self.assertTrue((Path(tmp) / "IP SAJA.txt").exists())
+            self.assertTrue((Path(tmp) / "DOMAIN SAJA.txt").exists())
+            self.assertTrue((Path(tmp) / "IP_PORT SAJA.txt").exists())
+            self.assertTrue((Path(tmp) / "IP:PORT.txt").exists())
 
     def test_dedupe_jsonl_file(self):
         rows = [

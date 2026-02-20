@@ -11,9 +11,11 @@ Tool CLI untuk scrape Shodan dengan rotasi multi API key, mode interaktif, progr
 - Jika ada halaman error saat scrape, halaman tersebut di-skip dulu lalu di-**retry di akhir**.
 - Interaktif: bisa input list API key langsung dari tools, pilih page per dork, dan target hasil (ribuan).
 - Output final hanya 1 set gabungan (tidak dipecah per dork):
-  - `IP SAJA.txt`
-  - `DOMAIN SAJA.txt`
-  - `IP_PORT SAJA.txt`
+  - `IP.txt`
+  - `DOMAIN.txt`
+  - `IP_PORT.txt`
+
+  (kompatibel juga dibuat: `IP SAJA.txt`, `DOMAIN SAJA.txt`, `IP_PORT SAJA.txt`, `IP:PORT.txt`)
 - Di akhir, tool auto dedupe hasil gabungan dan file text output.
 
 ## Menyiapkan file dork
