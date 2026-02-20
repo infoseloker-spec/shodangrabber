@@ -1,58 +1,56 @@
-# Shodan Grabber (Fast + Safe)
+# Shodan Grabber (Fast + Safe + Interactive)
 
-Tool CLI sederhana untuk ambil data dari Shodan dengan **rotasi 2 API key** supaya lebih cepat dan lebih aman dari rate-limit/error.
+Tool CLI untuk scrape Shodan dengan rotasi multi API key, mode interaktif, dan dukungan file `dork.txt`.
 
 ## Fitur
 
-- Rotasi multi-key (`--key` bisa dipakai lebih dari 1x).
-- Rate-limit per key (`--min-interval`) agar tidak spam request.
-- Auto cooldown + exponential backoff saat 429/5xx/network error.
-- Auto nonaktifkan key saat invalid (`401`) atau credit habis (`402`).
-- Deduplikasi hasil berdasarkan `ip + port`.
-- Output utama ke `jsonl` atau `csv` plus output terpisah: `ip`, `domain`, `ip:port`.
+- Rotasi multi-key + cooldown exponential backoff saat error/rate-limit.
+- Bisa proses banyak dork dari file (`--dork-file`) dengan **2 worker paralel**.
+- Jika ada halaman error saat scrape, halaman tersebut di-skip dulu dan di-**retry di akhir**.
+- Interaktif: bisa tanya langsung berapa page per dork dan berapa ribu hasil target.
+- Output per dork:
+  - raw `.jsonl`
+  - `_ip.txt`
+  - `_domain.txt`
+  - `_ip_port.txt`
+- Output gabungan semua dork juga dibuat otomatis.
 
-## Install
+## Menyiapkan file dork
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+Contoh `dork.txt`:
+
+```txt
+apache country:ID
+nginx port:443 country:SG
+# baris komentar akan diabaikan
 ```
 
 ## Cara pakai
 
+### 1) Mode interaktif (disarankan)
+
 ```bash
-python shodan_grabber.py "apache country:ID" \
+python3 shodan_grabber.py --interactive \
   --key "$SHODAN_KEY_1" \
-  --key "$SHODAN_KEY_2" \
+  --key "$SHODAN_KEY_2"
+```
+
+### 2) Langsung pakai file dork
+
+```bash
+python3 shodan_grabber.py \
+  --dork-file dork.txt \
   --pages 10 \
-  --per-page 100 \
-  --min-interval 1.2 \
-  --output output/results.jsonl
-```
-
-Setelah selesai, tool juga otomatis membuat:
-- `output/results_ip.txt`
-- `output/results_domain.txt`
-- `output/results_ip_port.txt`
-
-Contoh output CSV:
-
-```bash
-python shodan_grabber.py "nginx port:443 country:SG" \
+  --target-thousands 2 \
   --key "$SHODAN_KEY_1" \
   --key "$SHODAN_KEY_2" \
-  --output output/results.csv
+  --output-dir output
 ```
 
-## Tips aman biar tidak kena limit
+`--target-thousands 2` artinya target ±2000 hasil per dork.
 
-1. Pakai minimal 2 API key.
-2. Jangan turunkan `--min-interval` terlalu agresif (rekomendasi 1.0–2.0 detik per key).
-3. Batasi `--pages` sesuai kebutuhan.
-4. Kalau query berat, jalankan bertahap per negara/ASN.
+## Catatan aman
 
-## Catatan
-
-- Shodan memakai query credits; jika credit salah satu key habis, tool akan pindah ke key lain otomatis.
-- Tetap patuhi ToS Shodan dan gunakan hanya untuk aktivitas legal/authorized.
+- Gunakan minimal 2 API key agar lebih stabil.
+- Jangan terlalu agresif menurunkan `--min-interval`.
+- Tetap patuhi ToS Shodan dan gunakan hanya untuk aktivitas legal.
