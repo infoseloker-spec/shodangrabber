@@ -1,19 +1,21 @@
 # Shodan Grabber (Fast + Safe + Interactive)
 
-Tool CLI untuk scrape Shodan dengan rotasi multi API key, mode interaktif, dan dukungan file `dork.txt`.
+Tool CLI untuk scrape Shodan dengan rotasi multi API key, mode interaktif, progress realtime, dan dukungan file `dork.txt`.
 
 ## Fitur
 
 - Rotasi multi-key + cooldown exponential backoff saat error/rate-limit.
 - Bisa proses banyak dork dari file (`--dork-file`) dengan **2 worker paralel**.
-- Jika ada halaman error saat scrape, halaman tersebut di-skip dulu dan di-**retry di akhir**.
+- Menampilkan progress scraping per dork dan per page (status mulai, sukses, gagal, retry).
+- **Auto-save langsung** setiap ada hasil page (append ke file `.jsonl` saat proses berjalan).
+- Jika ada halaman error saat scrape, halaman tersebut di-skip dulu lalu di-**retry di akhir**.
 - Interaktif: bisa input list API key langsung dari tools, pilih page per dork, dan target hasil (ribuan).
 - Output per dork:
   - raw `.jsonl`
   - `_ip.txt`
   - `_domain.txt`
   - `_ip_port.txt`
-- Output gabungan semua dork juga dibuat otomatis.
+- Di akhir, tool akan auto dedupe semua output (per dork + combined).
 
 ## Menyiapkan file dork
 
